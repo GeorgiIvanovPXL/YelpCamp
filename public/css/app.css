@@ -11,6 +11,14 @@
     box-shadow: none;
 }
 
+body {
+    background-image: url('../img/mountains.png');
+}
+
+.header-link {
+    font-family: 'Josefin Sans', sans-serif;
+}
+
 .navbar-light .navbar-nav .nav-link {
     color: rgb(17, 17, 17);
 }

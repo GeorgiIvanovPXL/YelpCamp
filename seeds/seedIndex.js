@@ -9,22 +9,22 @@ require('../node_modules/dotenv').config();
 
 let pwd = process.env.MONGOPASSWORD
 
-const MONGO_URI = `mongodb+srv://desktopper:${'desktopper123'}@cluster0.fqkiu.mongodb.net/YelpCampDB?retryWrites=true&w=majority`
+const MONGO_URI = `mongodb+srv://desktopper:desktopper123@cluster0.fqkiu.mongodb.net/YelpCampDB?retryWrites=true&w=majority`
 
 // CONNECTION TO MONGOOSE
-mongoose.connect(MONGO_URI,{
+mongoose.connect('mongodb://localhost:27017/yelp-camp', {
     useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
-
-
+    useCreateIndex: true,
+    useUnifiedTopology: true
+});
 
 const db = mongoose.connection;
 
-db.on("error", console.error.bind(console, 'connection error: '));
-db.once('open', () =>{
-    console.log('CONNECTED TO DATABASE');
+db.on("error", console.error.bind(console, "connection error:"));
+db.once("open", () => {
+    console.log("Database connected");
 });
+
 
 // FUNCTION FOR RANDOMLY CHOOSING DESCRIPTORS AND PLACES FROM seedHelper.js
 
@@ -40,6 +40,7 @@ for(let i =0; i< 50;i++){
     const random1000 = Math.floor(Math.random() * 1000 );
     const price = Math.floor(Math.random() * 20 ) + 10;
     const camp = new Campground({
+        author: '6061b87fcf54942b98aa29cb',
         location: `${cities[random1000].city}, ${cities[random1000].state}`,
         title: `${sample(descriptors)} ${sample(places)}`,
         image: `https://source.unsplash.com/random/800x500?sig=${i}`,
@@ -51,6 +52,9 @@ for(let i =0; i< 50;i++){
 
 }
 
+
+
 seedDB().then(() =>{
+
     mongoose.connection.close();
-});
+})

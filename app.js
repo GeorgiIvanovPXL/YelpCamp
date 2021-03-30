@@ -1,70 +1,67 @@
 const express = require('express');
-const app = express();
+const session = require('express-session');
+const flash = require('connect-flash');
 const path = require('path');
 const mongoose = require('mongoose');
-const Campground = require('./models/campground');
-const Review = require('./models/review')
 const ejsMate = require('ejs-mate');
-const {campgroundSchema, reviewSchema} = require('./schemas');
-const catchAsync = require('./utilities/catchAsync');
 const ExpressError = require('./utilities/ExpressError');
 const methodOverride = require('method-override');
-const nodemailer = require('nodemailer');
-require('dotenv').config();
+const User = require('./models/user');
+const passport = require('passport');
+const LocalStrategy = require('passport-local');
+
+require('dotenv').config({ path: path.resolve(__dirname, './.env') });
+const app = express();
 
 
-const makeEmail = function (name){
-    // EMAIL STEP 1
-    let transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth:{
-            user:process.env.EMAIL,
-            pass:process.env.PASSWORD
-        }
-    });
-    
-    // EMAIL STEP 2
-    
-    let mailOptions ={
-        from: 'aestheticbeast345@gmail.com',
-        to: 'perfectwebpresence@gmail.com',
-        subject: 'News YelpCamp',
-        text: `New Campground Added: ${name}`
-    }
-    
-    // EMAIL STEP 3
-    
-    transporter.sendMail(mailOptions, (err, data) =>{
-        if(err){
-            console.log(`ERROR`)
-        }else{
-            console.log(`SUCCESS`)
-        }
-        
-    
-    })
-}
+const campgroundRoutes = require('./routes/campgrounds')
+const reviewRoutes = require('./routes/reviews')
+const userRoutes = require('./routes/users');
 
 
-let pwd = process.env.MONGOPASSWORD;
 
-const MONGO_URI = `mongodb+srv://desktopper:${pwd}@cluster0.fqkiu.mongodb.net/YelpCampDB?retryWrites=true&w=majority`
 
-// CONNECTION TO MONGOOSE
-mongoose.connect(MONGO_URI,{
+
+mongoose.connect('mongodb://localhost:27017/yelp-camp', {
     useNewUrlParser: true,
-    
-    useUnifiedTopology: true,
-})
-
-
-
-mongoose.connection.on('connected',() =>{
-    console.log('Connected to Atlas Cluster (MongoDB)...');
+    useCreateIndex: true,
+    useUnifiedTopology: true
 });
-mongoose.connection.on('error', console.error.bind(console, 'Connection ERROR'));
+
+const db = mongoose.connection;
+
+db.on("error", console.error.bind(console, "connection error:"));
+db.once("open", () => {
+    console.log("Database connected");
+});
 
 
+
+// // CONNECT TO MONGO
+
+// let pwd = process.env.MONGOPASSWORD;
+
+// const MONGO_URI = `mongodb+srv://desktopper:${pwd}@cluster0.fqkiu.mongodb.net/YelpCampDB?retryWrites=true&w=majority`
+
+// // CONNECTION TO MONGOOSE
+// mongoose.connect(MONGO_URI,{
+//     useNewUrlParser: true,
+//     useCreateIndex: true,
+//     useFindAndModify: false,
+//     useUnifiedTopology: true,
+// }).then(() => console.log('DB CONNECTED'))
+// .catch(err => console.log(err));
+
+
+// mongoose.connection.on('connected',() =>{
+//     console.log('Connected to Atlas Cluster (MongoDB)...');
+// });
+// mongoose.connection.on('error', console.error.bind(console, 'Connection ERROR'));
+
+
+app.use(express.urlencoded({
+    extended:true
+}));
 app.engine('ejs', ejsMate)
 app.set('view engine','ejs')
 app.set('views', path.join(__dirname, 'views'))
@@ -72,134 +69,56 @@ app.use(express.static('public'))
 app.use('/img', express.static(__dirname + 'public/img'));
 app.use('/css', express.static(__dirname + 'public/css'));
 app.use('/js', express.static(__dirname + 'public/js'));
+const sessionConfig ={
+    secret: 'HKJHKUHLUYuihgoiuyhoiuhLIUHLUIhoiuhm54685kjhiuyhuih',
+    resave: false,
+    saveUninitialized: true,
+    cookie:{
+        httpOnly: true,
+        expires: Date.now() + 1000 * 60 * 60 * 24 * 7,
+        maxAge: 1000 * 60 * 60 * 24 * 7
+    }
+}
+app.use(session(sessionConfig))
 
-app.use(express.urlencoded({
-    extended:true
-}));
+app.use(flash());
+
+app.use(passport.initialize());
+app.use(passport.session());
+passport.use(new LocalStrategy(User.authenticate()))
+
+// HOW TO SERIALIZE A USER (STORE USER IN THE SESSION)
+passport.serializeUser(User.serializeUser())
+// DELETE USER FROM THE SESSION
+passport.deserializeUser(User.deserializeUser())
+
+
+app.use((req,res, next) =>{
+    res.locals.currentUser = req.user;
+    res.locals.success = req.flash('success');
+    res.locals.error = req.flash('error');
+    next();
+ })
+
 app.use(methodOverride('_method'));
 
+//USER ROUTES
 
-const validateCampground = (req,res,next) => {
-     //JOI SCHEMA VALIDATION
+app.use('/', userRoutes)
 
-    const {error} = campgroundSchema.validate(req.body);
-    if(error){
-        const msg = error.details.map(el => el.message).join(',');
-        throw new ExpressError(msg,400);
-    }
-    else{
-        next();
-    }
+// CAMPGROUND ROUTES
 
-}
+app.use('/campgrounds', campgroundRoutes)
 
+// REVIEW ROUTES
 
-const validateReview = (req, res, next) =>{
-    const {error} = reviewSchema.validate(req.body);
-    if(error){
-        const msg = error.details.map(el => el.message).join(',');
-        throw new ExpressError(msg, 400);
-    }else{
-        next();
-    }
-}
-
-
-
-// CAMPGROUNDS ROUTES
+app.use('/campgrounds/:id/reviews', reviewRoutes)
 
 // GET home.ejs
 
 app.get('/', (req, res) =>{
     res.render('home')
 })
-
-// INDEX OF CAMPGROUNDS ==> SHOWS ALL CAMPGROUNDS
-
-app.get('/campgrounds', async (req,res) => {
-   const campgrounds = await Campground.find({});
-   res.render('campgrounds/index',{campgrounds})
-})
-
-// SERVE NEW FORM AND CREATE NEW CAMPGROUND (POST)
-
-app.get('/campgrounds/new',(req,res) =>{
-    res.render('campgrounds/new')
-})
-
-app.post('/campgrounds', validateCampground , catchAsync(async (req,res,next) =>{
-    // if(!req.body.campground) throw new ExpressError('Invalid Campground Data',400);
-    const campground = new Campground(req.body.campground);
-    await campground.save();
-    makeEmail(campground.title);
-    res.redirect(`/campgrounds/${campground._id}`);
-}));
-
-// SHOW SINGLE CAMPGROUND
-
-app.get('/campgrounds/:id', catchAsync(async (req,res) =>{
-   
-    const {id} = req.params;
-    const campground = await Campground.findById(id).populate('reviews');
-    res.render('campgrounds/show', {campground})
-
-}));
-
-// SERVE EDIT FORM AND UPDATE RECORD IN DB
-
-app.get('/campgrounds/:id/edit', catchAsync(async (req, res) =>{
-    const {id} = req.params;
-    const campground = await Campground.findById(id);
-    res.render('campgrounds/edit', {campground})
-}));
-
-app.put('/campgrounds/:id', validateCampground, catchAsync( async (req, res) =>{
-    const {id} = req.params;
-   const campground = await Campground.findByIdAndUpdate(id,{...req.body.campground});
-   res.redirect(`/campgrounds/${campground._id}`)
-}));
-
-// DELETE A CAMPGROUND
-
-app.delete('/campgrounds/:id', catchAsync(async (req, res) =>{
-    const {id} = req.params;
-    const deletedProduct = await Campground.findByIdAndDelete(id);
-    res.redirect('/campgrounds');
-}));
-
-
-
-
-// REVIEWS ROUTES
-
-
-
-app.post('/campgrounds/:id/reviews', validateReview ,catchAsync(async(req,res) =>{
-
-    // res.send('You made it!')
-    const {id} = req.params;
-    const campground = await Campground.findById(id);
-    const review = new Review(req.body.review);
-    // TEST log when a new review is created
-    console.log(review)
-    campground.reviews.push(review);
-    await review.save();
-    await campground.save();
-    res.redirect(`/campgrounds/${campground._id}`);
-
-}))
-
-
-app.delete('/campgrounds/:id/reviews/:reviewId', catchAsync(async(req, res)=>{
-    const {id, reviewId} = req.params;
-    const campground = await Campground.findByIdAndUpdate(id,{$pull: {reviews: reviewId}});
-    const review = await Review.findByIdAndDelete(reviewId);
-    res.redirect(`/campgrounds/${campground._id}`)
-
-}))
-
-
-
 
 app.all('*',(req,res,next) =>{
     next(new ExpressError('Page not found!',404));
